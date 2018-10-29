@@ -18,13 +18,8 @@ class AggregationProcessor(Processor):
 
     aggregate_metrics = set()
 
-    for rule in RuleManager.rules:
-      aggregate_metric = rule.get_aggregate_metric(metric)
-
-      if aggregate_metric is None:
-        continue
-      else:
-        aggregate_metrics.add(aggregate_metric)
+    for (rule, aggregate_metric) in RuleManager.get_aggregate_metrics(metric):
+      aggregate_metrics.add(aggregate_metric)
 
       values_buffer = BufferManager.get_buffer(aggregate_metric)
 
