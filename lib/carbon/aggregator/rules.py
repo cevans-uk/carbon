@@ -24,13 +24,14 @@ def get_cache():
 
 class RuleManager(object):
   def __init__(self):
-    self.rules = []
+    self.clear()
     self.rules_file = None
     self.read_task = LoopingCall(self.read_rules)
     self.rules_last_read = 0.0
 
   def clear(self):
     self.rules = []
+    self.cache = get_cache()
 
   def read_from(self, rules_file):
     self.rules_file = rules_file
@@ -65,6 +66,7 @@ class RuleManager(object):
     log.aggregator("clearing aggregation buffers")
     BufferManager.clear()
     self.rules = new_rules
+    self.cache = get_cache()
     self.rules_last_read = mtime
 
   def parse_definition(self, line):
@@ -78,6 +80,20 @@ class RuleManager(object):
     except ValueError:
       log.err("Failed to parse rule in %s, line: %s" % (self.rules_file, line))
       raise
+
+  def get_aggregate_metrics(self, metric):
+    try:
+      return self.cache[metric]
+    except KeyError:
+      pass
+
+    matches = []
+    for rule in self.rules:
+      aggregate_metric = rule.get_aggregate_metric(metric)
+      if aggregate_metric is not None:
+        matches.append((rule, aggregate_metric))
+    self.cache[metric] = matches
+    return matches
 
 
 class AggregationRule(object):
@@ -93,16 +109,8 @@ class AggregationRule(object):
     self.aggregation_func = AGGREGATION_METHODS[method]
     self.build_regex()
     self.build_template()
-    self.cache = get_cache()
 
   def get_aggregate_metric(self, metric_path):
-    if metric_path in self.cache:
-      try:
-        return self.cache[metric_path]
-      except KeyError:
-        # The value can expire at any time, so we need to catch this.
-        pass
-
     match = self.regex.match(metric_path)
     result = None
 
@@ -114,7 +122,6 @@ class AggregationRule(object):
         log.err("Failed to interpolate template %s with fields %s" % (
           self.output_template, extracted_fields))
 
-    self.cache[metric_path] = result
     return result
 
   def build_regex(self):
